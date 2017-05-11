@@ -13,10 +13,12 @@ end
 Base.start(s::SortedIntSet) = length(s.next)
 Base.next(s::SortedIntSet,p) = s.next[p],s.next[p]
 Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
-function empty!(s::SortedIntSet) 
+
+function init!(s::SortedIntSet,i)
     next = s.next
     n = length(next)-1
-    next[n+1] = n+1
+    next[n+1] = i
+    next[i] = n+1
     return s
 end
 
@@ -80,8 +82,7 @@ function symbolic(Ap,Ai,c)
     Fq[1] = 1
     for j = 1:n
         # Initialise Fij = find(A[j:n,j]), Flj[Fij] = 0
-        empty!(Fij)
-        insert!(Fij,j,n+1); lasti = j
+        init!(Fij,j); lasti = j
         Flj[j] = 0 
         for i in @view Ai[Ap[j]:Ap[j+1]-1]
             if i <= j; continue; end
