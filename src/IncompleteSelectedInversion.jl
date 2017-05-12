@@ -1,15 +1,26 @@
 module IncompleteSelectedInversion
 
-# Sorted subset of {1,...,n}
-# next[n+1] = first entry in the set
-# If i is an element of the set, then next[i] is the 
-# smallest j > i in the set, or n+1 if no such j exists.
+#immutable UnsafeArrayWrapper{T,N} <: AbstractArray{T,N}
+#    data::Ptr{T}
+#    dims::NTuple{N,Int}
+#    IsbitsArrayWrapper(a::AbstractArray{T,N})
+#end
+
+
+#=
+ Sorted subset of {1,...,n}
+ next[n+1] = first entry in the set
+ If i is an element of the set, then next[i] is the 
+ smallest j > i in the set, or n+1 if no such j exists.
+=#
 immutable SortedIntSet
     next::Vector{Int} 
     SortedIntSet(n) = new(Vector{Int}(n+1))
 end
 
-# Iteration
+#= 
+ Iteration
+=#
 Base.start(s::SortedIntSet) = length(s.next)
 Base.next(s::SortedIntSet,p) = s.next[p],s.next[p]
 Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
@@ -22,8 +33,10 @@ function init!(s::SortedIntSet,i)
     return s
 end
 
-# Insert i into the set. p points to an element before i in the linked list. 
-# Return whether the element was newly inserted. 
+#=
+ Insert i into the set. p points to an element before i in the linked list. 
+ Return whether the element was newly inserted. 
+=#
 Base.insert!(s::SortedIntSet,i) = insert!(s,i,length(s.next))
 function Base.insert!(s::SortedIntSet,i,p)
     next = s.next
@@ -43,93 +56,109 @@ function Base.insert!(s::SortedIntSet,i,p)
     end
 end
 
-function symbolic(Ap,Ai,c)
-    n = length(Ap)-1
-    Ti = eltype(Ap)
+abstract AbstractStructure_pi{Ti}
+ncols(A::AbstractStructure_pi) = length(A.p)-1
+eltype{Ti}(A::AbstractStructure_pi{Ti}) = Ti
 
 
-    # ----------------
-    # Output variables
-    # ----------------
-
-    Fp = Vector{Ti}(n+1) 
-    Fi = Vector{Ti}(0)
-    # Fi[Fp[j]:Fp[j+1]-1] = find(F[j:end,j])
-
-    Fl = Vector{Int}(0) 
-    # Fl[p] = level of fill of F[i,j] where i = Fi[p] and p in Fp[j]:Fp[j+1] 
-
-    Fq = Vector{Ti}(n+1) 
-    Fk = Vector{Ti}(0)
-    # Fk[Fq[i]:Fq[i+1]-1] = find(F[i,1:i-1]), in arbitrary order
+immutable Structure_pi{Ti} <: AbstractStructure_pi{Ti}
+    p::Vector{Ti}
+    i::Vector{Ti}
+end
 
 
-    # ---------
-    # Workspace
-    # ---------
+immutable Structure_pil{Ti} <: AbstractStructure_pi{Ti}
+    p::Vector{Ti}
+    i::Vector{Ti}
+    l::Vector{Int}
+end
+function (::Type{Structure_pil{Ti}}){Ti}(n)
+    p = Vector{Ti}(n+1)
+    p[1] = 1
+    i = Vector{Ti}(0)
+    l = Vector{Ti}(0)
+    return Structure_pil{Ti}(p,i,l)
+end
 
-    Fij = SortedIntSet(n) 
-    # Fij = find(F[j:n,j])
+immutable pilColumn
+    i::SortedIntSet
+    l::Vector{Int}
+    c::Int
+end
+function (::Type{pilColumn})(n,c)
+    i = SortedIntSet(n)
+    l = Vector{Int}(n)
+    return pilColumn(i,l,c)
+end
 
-    Flj = Vector{Int}(n) 
-    # Flj[i] = level-of-fill of F[i,j], or garbage if !(i in Fij)
+function init!(Fj::pilColumn,j,A)
+    init!(Fj.i,j)
+    Fj.l[j] = 0 
+    lasti = j
+    for p in A.p[j]:A.p[j+1]-1
+        i = A.i[p]
+        if i <= j; continue; end
+        insert!(Fj.i,i,lasti)
+        Fj.l[i] = 0 
+        lasti = i
+    end
+    return nothing
+end
+function update!(Fj::pilColumn,F::Structure_pil,pvals)
+    n = ncols(F)
+    lkj = F.l[first(pvals)]
+    if lkj >= Fj.c; return; end
+    lasti = n+1
+    for p in pvals
+        i = F.i[p]
+        lik = F.l[p]
+        Flij = lik + lkj + 1
+        if Flij <= Fj.c
+            if insert!(Fj.i,i,lasti)
+                Fj.l[i] = Flij
+            else
+                Fj.l[i] = min(Fj.l[i],Flij)
+            end
+            lasti = i
+        end
+    end
+end
+function Base.push!(F::Structure_pil,j,Fj::pilColumn)
+    for i in Fj.i
+        push!(F.i,i)
+        push!(F.l,Fj.l[i])
+    end
+    F.p[j+1] = length(F.i)+1
+    return nothing
+end
 
+immutable Iteration_jkp{Structure_A}
+    A::Structure_A
+    nextp::Vector{Int}
+    nextk::Vector{Int}
+end
+immutable Iteration_kp{Ti}
+    jkp::Iteration_jkp{Ti}
+    j::Int
+end
+
+function iterate_jkp(A::AbstractStructure_pi)
+    n = ncols(A)
     nextp = Vector{Int}(n)
     nextk = Vector{Int}(n)
     fill!(nextk,n+1)
+    fill!(nextp,0)
+    Iteration_jkp(A,nextp,nextk)
+end
+Base.start(jkp::Iteration_jkp) = 0
+function Base.next(jkp::Iteration_jkp,j) 
+    A = jkp.A
+    nextp = jkp.nextp
+    nextk = jkp.nextk
 
-    Fp[1] = 1
-    Fq[1] = 1
-    for j = 1:n
-        # Initialise Fij = find(A[j:n,j]), Flj[Fij] = 0
-        init!(Fij,j); lasti = j
-        Flj[j] = 0 
-        for i in @view Ai[Ap[j]:Ap[j+1]-1]
-            if i <= j; continue; end
-            insert!(Fij,i,lasti); lasti = i
-            Flj[i] = 0 
-        end
-
-        k = nextk[j]
-        while k < j
-            if Fl[nextp[k]] < c
-                lasti = n+1
-                for p in nextp[k]:Fp[k+1]-1
-                    i = Fi[p]
-                    l = Fl[p]
-                    Flij = l + Fl[nextp[k]] + 1
-                    if Flij <= c
-                        # TODO: try saving time by eliminating branch
-                        if insert!(Fij,i,lasti)
-                            Flj[i] = Flij
-                        else
-                            Flj[i] = min(Flj[i],Flij)
-                        end
-                        lasti = i
-                    end
-                end
-            end
-
-            push!(Fk,k)
-            newk = nextk[k]
-            nextp[k] += 1
-            if nextp[k] < Fp[k+1]
-                i = Fi[nextp[k]]
-                nextk[i],nextk[k] = k,nextk[i]
-            end
-            k = newk
-        end
-
-        # Store Fij and Flj into permanent storage
-        for i in Fij
-            push!(Fi,i)
-            push!(Fl,Flj[i])
-        end
-        Fp[j+1] = length(Fi)+1
-        Fq[j+1] = length(Fk)+1
-
-        for p in Fp[j]:Fp[j+1]-1
-            i = Fi[p]
+    if j > 0
+        for p in A.p[j]:A.p[j+1]-1
+            i = A.i[p]
             if i > j
                 nextp[j] = p
                 nextk[i],nextk[j] = j,nextk[i]
@@ -137,51 +166,44 @@ function symbolic(Ap,Ai,c)
             end
         end
     end
-    return Fp,Fi,Fl,Fq,Fk
+    j += 1
+    return (j,Iteration_kp(jkp,j)),j
 end
+Base.done(jkp::Iteration_jkp,j) = j == ncols(jkp.A)
 
-function numeric(Ap,Ai,Av,Fp,Fi,Fq,Fk)
-    n = length(Ap)-1
-    Ti = eltype(Ap)
-    Tv = eltype(Av)
+Base.start(kp::Iteration_kp) = kp.jkp.nextk[kp.j]
+function Base.next(kp::Iteration_kp,k)
+    jkp = kp.jkp
+    A = jkp.A
+    nextp = jkp.nextp
+    nextk = jkp.nextk
 
-    # ----------------
-    # Output variables
-    # ----------------
-
-    Fv = Vector{Tv}(length(Fi))
-
-    # ---------
-    # Workspace
-    # ---------
-
-    Fvj = Vector{Tv}(n) 
-    # Fvj[i] = F[i,j] if i in find(F[j:n,j]), garbage otherwise
-    
-    nextp = Fp+1
-    
-    for j = 1:n
-        for i in @view Fi[Fp[j]:Fp[j+1]-1]
-            Fvj[i] = zero(Tv)
-        end
-        for p in Ap[j]:Ap[j+1]-1
-            Fvj[Ai[p]] = Av[p]
-        end
-        @inbounds for k = @view Fk[Fq[j]:Fq[j+1]-1]
-            Fvkj = Fv[Fp[k]]*Fv[nextp[k]]  # Factor out for performance
-            for p = nextp[k]:Fp[k+1]-1
-                # We compute a few dropped fill-ins here. It turns out computing 
-                # and discarding is faster than introducing a branch. 
-                Fvj[Fi[p]] -= Fv[p]*Fvkj
-            end
-            nextp[k] += 1
-        end
-        Fv[Fp[j]] = Fvj[j]
-        for p = Fp[j]+1:Fp[j+1]-1
-            Fv[p] = Fvj[Fi[p]]/Fvj[j]
-        end
+    pp = nextp[k]
+    kk = nextk[k]
+    nextp[k] += 1
+    if nextp[k] < A.p[k+1]
+        i = A.i[nextp[k]]
+        nextk[i],nextk[k] = k,nextk[i]
     end
-    return Fv
+    return (k,pp:A.p[k+1]-1),kk
+end
+Base.done(kp::Iteration_kp,k) = k > kp.j
+
+
+function symbolic(A,c)
+    Ti = eltype(A)
+    n = ncols(A)
+
+    F = Structure_pil{Ti}(n)
+    Fj = pilColumn(n,c)
+    for (j,kvals) in iterate_jkp(F)
+        init!(Fj,j,A)
+        for (k,pvals) in kvals
+            update!(Fj,F,pvals)
+        end
+        push!(F,j,Fj)
+    end
+    return F
 end
 
 end # module
