@@ -56,42 +56,47 @@ function Base.insert!(s::SortedIntSet,i,p)
     end
 end
 
-abstract AbstractStructure_pi{Ti}
-ncols(A::AbstractStructure_pi) = length(A.p)-1
-eltype{Ti}(A::AbstractStructure_pi{Ti}) = Ti
+abstract AbstractSparsePI{Ti}
+ncols(A::AbstractSparsePI) = length(A.p)-1
+idxtype{Ti}(A::AbstractSparsePI{Ti}) = Ti
 
 
-immutable Structure_pi{Ti} <: AbstractStructure_pi{Ti}
+immutable SparsePI{Ti} <: AbstractSparsePI{Ti}
     p::Vector{Ti}
     i::Vector{Ti}
 end
 
-
-immutable Structure_pil{Ti} <: AbstractStructure_pi{Ti}
+immutable SparsePIL{Ti} <: AbstractSparsePI{Ti}
     p::Vector{Ti}
     i::Vector{Ti}
     l::Vector{Int}
 end
-function (::Type{Structure_pil{Ti}}){Ti}(n)
+function (::Type{SparsePIL{Ti}}){Ti}(n)
     p = Vector{Ti}(n+1)
     p[1] = 1
     i = Vector{Ti}(0)
     l = Vector{Ti}(0)
-    return Structure_pil{Ti}(p,i,l)
+    return SparsePIL{Ti}(p,i,l)
 end
 
-immutable pilColumn
+immutable SparsePIL_Column
     i::SortedIntSet
     l::Vector{Int}
     c::Int
 end
-function (::Type{pilColumn})(n,c)
+function (::Type{SparsePIL_Column})(n,c)
     i = SortedIntSet(n)
     l = Vector{Int}(n)
-    return pilColumn(i,l,c)
+    return SparsePIL_Column(i,l,c)
 end
 
-function init!(Fj::pilColumn,j,A)
+immutable SparsePIV{Ti,Tv}
+    p::Vector{Ti}
+    i::Vector{Ti}
+    v::Vector{Tv}
+end
+
+function init!(Fj::SparsePIL_Column,j,A)
     init!(Fj.i,j)
     Fj.l[j] = 0 
     lasti = j
@@ -104,7 +109,7 @@ function init!(Fj::pilColumn,j,A)
     end
     return nothing
 end
-function update!(Fj::pilColumn,F::Structure_pil,pvals)
+function update!(Fj::SparsePIL_Column,F::SparsePIL,pvals)
     n = ncols(F)
     lkj = F.l[first(pvals)]
     if lkj >= Fj.c; return; end
@@ -123,7 +128,7 @@ function update!(Fj::pilColumn,F::Structure_pil,pvals)
         end
     end
 end
-function Base.push!(F::Structure_pil,j,Fj::pilColumn)
+function Base.push!(F::SparsePIL,j,Fj::SparsePIL_Column)
     for i in Fj.i
         push!(F.i,i)
         push!(F.l,Fj.l[i])
@@ -142,7 +147,7 @@ immutable Iteration_kp{Ti}
     j::Int
 end
 
-function iterate_jkp(A::AbstractStructure_pi)
+function iterate_jkp(A::AbstractSparsePI)
     n = ncols(A)
     nextp = Vector{Int}(n)
     nextk = Vector{Int}(n)
@@ -191,11 +196,11 @@ Base.done(kp::Iteration_kp,k) = k > kp.j
 
 
 function symbolic(A,c)
-    Ti = eltype(A)
+    Ti = idxtype(A)
     n = ncols(A)
 
-    F = Structure_pil{Ti}(n)
-    Fj = pilColumn(n,c)
+    F = SparsePIL{Ti}(n)
+    Fj = SparsePIL_Column(n,c)
     for (j,kvals) in iterate_jkp(F)
         init!(Fj,j,A)
         for (k,pvals) in kvals

@@ -9,7 +9,7 @@ T = IncompleteSelectedInversion
         n = rand(1:100)
         fill = rand(1:20)
         A = I + sprand(n,n,min(1.,fill/n))
-        As = T.Structure_pi(A.colptr,A.rowval)
+        As = T.SparsePI(A.colptr,A.rowval)
 
         jvals = Int[]
         iter = T.iterate_jkp(As)
@@ -36,7 +36,7 @@ end
         n = rand(1:100)
         fill = rand(1:20)
         A = I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
-        As = T.Structure_pi(A.colptr,A.rowval)
+        As = T.SparsePI(A.colptr,A.rowval)
 
         Fs = T.symbolic(As,n)
         F = SparseMatrixCSC(n,n,Fs.p,Fs.i,ones(Bool,length(Fs.i)))
