@@ -9,10 +9,10 @@ T = IncompleteSelectedInversion
         n = rand(1:100)
         fill = rand(1:20)
         A = I + sprand(n,n,min(1.,fill/n))
-        As = T.SparsePI(A.colptr,A.rowval)
+        Ap,Ai = A.colptr,A.rowval
 
         jvals = Int[]
-        iter = T.iterate_jkp(As)
+        iter = T.iterate_jkp(Ap,Ai)
         for (j,kpvals) in iter
             push!(jvals,j)
             kvals = Int[]
@@ -20,7 +20,7 @@ T = IncompleteSelectedInversion
                 push!(kvals,k)
                 ivals = Int[]
                 for p in pvals
-                    push!(ivals,As.i[p])
+                    push!(ivals,Ai[p])
                 end
                 @test ivals == j-1+find(A[j:end,k])
             end
@@ -36,10 +36,10 @@ end
         n = rand(1:100)
         fill = rand(1:20)
         A = I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
-        As = T.SparsePI(A.colptr,A.rowval)
+        Ap,Ai = A.colptr,A.rowval
 
-        Fs = T.symbolic(As,n)
-        F = SparseMatrixCSC(n,n,Fs.p,Fs.i,ones(Bool,length(Fs.i)))
+        Fp,Fi = T.symbolic(Ap,Ai,n)
+        F = SparseMatrixCSC(n,n,Fp,Fi,ones(Bool,length(Fi)))
         F̂ = tril(lufact(full(A),Val{false}).factors .!= 0)
         @test (F == F̂) == true
     end
