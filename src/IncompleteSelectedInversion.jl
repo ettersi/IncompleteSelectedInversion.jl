@@ -1,22 +1,5 @@
 module IncompleteSelectedInversion
 
-immutable IsbitsArrayWrapper{T,N} <: AbstractArray{T,N}
-    data::Ptr{T}
-    dims::NTuple{N,Int}
-end
-IsbitsArrayWrapper(a::AbstractArray) = IsbitsArrayWrapper(pointer(a),size(a))
-Base.size(A::IsbitsArrayWrapper) = A.dims
-@inline function Base.getindex(A::IsbitsArrayWrapper, i::Int) 
-    #@boundscheck checkbounds(A,i)
-    return unsafe_load(A.data,i)
-end
-@inline function Base.setindex!(A::IsbitsArrayWrapper, v, i::Int) 
-    #@boundscheck checkbounds(A,i)
-    return unsafe_store!(A.data,v,i)
-end
-Base.linearindexing{T,N}(::Type{IsbitsArrayWrapper{T,N}}) = Base.LinearFast()
-
-
 #=
  Sorted subset of {1,...,n}.
  Used to represent the row indices of a single column in F.
@@ -32,10 +15,10 @@ immutable SortedIntSet
 end
 
 Base.start(s::SortedIntSet) = length(s.next)
-Base.next(s::SortedIntSet,p) = s.next[p],s.next[p]
-Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
+Base.@propagate_inbounds Base.next(s::SortedIntSet,p) = s.next[p],s.next[p]
+Base.@propagate_inbounds Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
 
-@inline function init!(s::SortedIntSet,i)
+Base.@propagate_inbounds function init!(s::SortedIntSet,i)
     next = s.next
     n = length(next)-1
 
@@ -50,8 +33,8 @@ Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
     end
 end
 
-@inline function Base.insert!(s::SortedIntSet,next,i,p)
-    #next = s.next
+Base.@propagate_inbounds function Base.insert!(s::SortedIntSet,i,p)
+    next = s.next
     n = length(next)-1
 
     @boundscheck begin
@@ -73,27 +56,31 @@ end
 
 
 
-function iterate_jkp(Ap,Ai)
-    n = length(Ap)-1
-    nextp = Vector{Int}(n)
-    nextk = Vector{Int}(n)
-    fill!(nextk,n+1)
-    Iteration_jkp(Ap,Ai,nextp,nextk)
-end
+iterate_jkp(Ap,Ai) = Iteration_jkp(Ap,Ai)
 
 immutable Iteration_jkp{Ti}
     Ap::Vector{Ti}
     Ai::Vector{Ti}
-    nextp::Vector{Int}
     nextk::Vector{Int}
+    nextp::Vector{Int}
 end
 immutable Iteration_kp{Ti}
-    jkp::Iteration_jkp{Ti}
+    Ap::Vector{Ti}
+    Ai::Vector{Ti}
+    nextk::Vector{Int}
+    nextp::Vector{Int}
     j::Int
 end
 
+function Iteration_jkp(Ap,Ai)
+    n = length(Ap)-1
+    nextk = Vector{Int}(n)
+    fill!(nextk,n+1)
+    nextp = Vector{Int}(n)
+    return Iteration_jkp(Ap,Ai,nextk,nextp)
+end
 Base.start(jkp::Iteration_jkp) = 0
-function Base.next(jkp::Iteration_jkp,j) 
+Base.@propagate_inbounds function Base.next(jkp::Iteration_jkp,j) 
     Ap = jkp.Ap
     Ai = jkp.Ai
     nextp = jkp.nextp
@@ -110,17 +97,16 @@ function Base.next(jkp::Iteration_jkp,j)
         end
     end
     j += 1
-    return (j,Iteration_kp(jkp,j)),j
+    return (j,Iteration_kp(Ap,Ai,nextk,nextp,j)),j
 end
 Base.done(jkp::Iteration_jkp,j) = j == length(jkp.Ap)-1
 
-Base.start(kp::Iteration_kp) = kp.jkp.nextk[kp.j]
-function Base.next(kp::Iteration_kp,k)
-    jkp = kp.jkp
-    Ap = jkp.Ap
-    Ai = jkp.Ai
-    nextp = jkp.nextp
-    nextk = jkp.nextk
+Base.@propagate_inbounds Base.start(kp::Iteration_kp) = kp.nextk[kp.j]
+Base.@propagate_inbounds function Base.next(kp::Iteration_kp,k)
+    Ap = kp.Ap
+    Ai = kp.Ai
+    nextp = kp.nextp
+    nextk = kp.nextk
 
     pp = nextp[k]
     kk = nextk[k]
@@ -175,7 +161,7 @@ function symbolic(Ap,Ai,c)
             for p in Ap[j]:Ap[j+1]-1
                 i = Ai[p]
                 if i <= j; continue; end
-                insert!(Fji,next,i,lasti)
+                insert!(Fji,i,lasti)
                 Fjl[i] = 0 
                 lasti = i
             end
@@ -190,7 +176,7 @@ function symbolic(Ap,Ai,c)
                     lik = Fl[p]
                     Flij = lik + lkj + 1
                     if Flij <= c
-                        if insert!(Fji,next,i,lasti)
+                        if insert!(Fji,i,lasti)
                             Fjl[i] = Flij
                         else
                             Fjl[i] = min(Fjl[i],Flij)
@@ -210,9 +196,6 @@ function symbolic(Ap,Ai,c)
         return Fp,Fi,Fl
     end
 end
-
-
-
 
 
 function numeric(Ap,Ai,Av,Fp,Fi)
@@ -260,8 +243,6 @@ function numeric(Ap,Ai,Av,Fp,Fi)
         return Fv
     end
 end
-
-
 
 
 function selinv_jki(Fp,Fi,Fv)
