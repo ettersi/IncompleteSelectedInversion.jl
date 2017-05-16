@@ -25,21 +25,29 @@ Base.start(s::SortedIntSet) = length(s.next)
 Base.next(s::SortedIntSet,p) = s.next[p],s.next[p]
 Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
 
-function init!(s::SortedIntSet,i)
+@inline function init!(s::SortedIntSet,i)
     next = s.next
     n = length(next)-1
-    next[n+1] = i
-    next[i] = n+1
-    return s
+
+    @boundscheck begin
+        @assert 1 <= i <= n
+    end
+
+    @inbounds begin
+        next[n+1] = i
+        next[i] = n+1
+        return s
+    end
 end
 
-Base.insert!(s::SortedIntSet,i) = insert!(s,i,length(s.next))
-function Base.insert!(s::SortedIntSet,i,p)
+@inline function Base.insert!(s::SortedIntSet,i,p)
     next = s.next
     n = length(next)-1
 
-    if !(1 <= i <= n); throw(BoundsError()); end
-    if !(p == n+1 || 1 <= p <= i); throw(BoundsError()); end
+    @boundscheck begin
+        @assert 1 <= i <= n
+        @assert p == n+1 || 1 <= p <= i
+    end
     @inbounds begin
         while next[p] < i
             p = next[p]
@@ -55,9 +63,6 @@ end
 
 
 
-#=
- Iterate a sparse 
-=#
 function iterate_jkp(Ap,Ai)
     n = length(Ap)-1
     nextp = Vector{Int}(n)
@@ -119,64 +124,80 @@ end
 Base.done(kp::Iteration_kp,k) = k > kp.j
 
 
-
+function checkmat(Ap,Ai)
+    n = length(Ap)-1
+    for j = 1:n
+        @assert 1 <= Ai[Ap[j]] <= n
+        for p in Ap[j]+1:Ap[j+1]-1
+            @assert Ai[p-1] < Ai[p] <= n
+        end
+    end
+end
+function checkmat(Ap,Ai,Ax,Ay...) 
+    @assert length(Ax) >= Ap[end]-1
+    checkmat(Ap,Ai,Ay...)
+end
 
 
 function symbolic(Ap,Ai,c)
-    Ti = eltype(Ap)
-    n = length(Ap)-1
+    checkmat(Ap,Ai)
 
-    # Return variables
-    Fp = Vector{Ti}(n+1); Fp[1] = 1
-    Fi = Vector{Ti}(0)
-    Fl = Vector{Ti}(0)
+    @inbounds begin
+        Ti = eltype(Ap)
+        n = length(Ap)-1
 
-    # Workspace for a single column
-    Fji = SortedIntSet(n)
-    Fjl = Vector{Int}(n)
+        # Return variables
+        Fp = Vector{Ti}(n+1); Fp[1] = 1
+        Fi = Vector{Ti}(0)
+        Fl = Vector{Ti}(0)
 
-    # Main algorithm
-    for (j,kvals) in iterate_jkp(Fp,Fi)
-        # Initialise column
-        init!(Fji,j)
-        Fjl[j] = 0 
-        lasti = j
-        for p in Ap[j]:Ap[j+1]-1
-            i = Ai[p]
-            if i <= j; continue; end
-            insert!(Fji,i,lasti)
-            Fjl[i] = 0 
-            lasti = i
-        end
+        # Workspace for a single column
+        Fji = SortedIntSet(n)
+        Fjl = Vector{Int}(n)
 
-        # Pull in updates
-        for (k,pvals) in kvals
-            lkj = Fl[first(pvals)]
-            if lkj >= c; return; end
-            lasti = n+1
-            for p in pvals
-                i = Fi[p]
-                lik = Fl[p]
-                Flij = lik + lkj + 1
-                if Flij <= c
-                    if insert!(Fji,i,lasti)
-                        Fjl[i] = Flij
-                    else
-                        Fjl[i] = min(Fjl[i],Flij)
+        # Main algorithm
+        for (j,kvals) in iterate_jkp(Fp,Fi)
+            # Initialise column
+            init!(Fji,j)
+            Fjl[j] = 0 
+            lasti = j
+            for p in Ap[j]:Ap[j+1]-1
+                i = Ai[p]
+                if i <= j; continue; end
+                insert!(Fji,i,lasti)
+                Fjl[i] = 0 
+                lasti = i
+            end
+
+            # Pull in updates
+            for (k,pvals) in kvals
+                lkj = Fl[first(pvals)]
+                if lkj >= c; return; end
+                lasti = n+1
+                for p in pvals
+                    i = Fi[p]
+                    lik = Fl[p]
+                    Flij = lik + lkj + 1
+                    if Flij <= c
+                        if insert!(Fji,i,lasti)
+                            Fjl[i] = Flij
+                        else
+                            Fjl[i] = min(Fjl[i],Flij)
+                        end
+                        lasti = i
                     end
-                    lasti = i
                 end
             end
-        end
 
-        # Copy temporary column into F
-        for i in Fji
-            push!(Fi,i)
-            push!(Fl,Fjl[i])
+            # Copy temporary column into F
+            for i in Fji
+                push!(Fi,i)
+                push!(Fl,Fjl[i])
+            end
+            Fp[j+1] = length(Fi)+1
         end
-        Fp[j+1] = length(Fi)+1
+        return Fp,Fi,Fl
     end
-    return Fp,Fi,Fl
 end
 
 
@@ -184,96 +205,105 @@ end
 
 
 function numeric(Ap,Ai,Av,Fp,Fi)
-    Ti = eltype(Ap)
-    Tv = eltype(Av)
-    n = length(Ap)-1
+    checkmat(Ap,Ai,Av)
+    checkmat(Fp,Fi)
 
-    # Return variables
-    Fv = Vector{Tv}(length(Fi))
+    @inbounds begin
+        Ti = eltype(Ap)
+        Tv = eltype(Av)
+        n = length(Ap)-1
 
-    # Workspace for a single column
-    Fjv = Vector{Tv}(n)
+        # Return variables
+        Fv = Vector{Tv}(length(Fi))
 
-    # Main algorithm
-    for (j,kvals) in iterate_jkp(Fp,Fi)
-        # Initialise column
-        for p in Fp[j]:Fp[j+1]-1
-            Fjv[Fi[p]] = zero(Tv)
-        end
-        for p in Ap[j]:Ap[j+1]-1
-            Fjv[Ai[p]] = Av[p]
-        end
+        # Workspace for a single column
+        Fjv = Vector{Tv}(n)
 
-        # Pull in updates
-        for (k,pvals) in kvals
-            f = Fv[Fp[k]]*Fv[first(pvals)]
-            for p in pvals
-                # We compute a few dropped fill-ins here. It turns out computing 
-                # and discarding is faster than introducing a branch. 
-                Fjv[Fi[p]] -= Fv[p]*f
+        # Main algorithm
+        for (j,kvals) in iterate_jkp(Fp,Fi)
+            # Initialise column
+            for p in Fp[j]:Fp[j+1]-1
+                Fjv[Fi[p]] = zero(Tv)
+            end
+            for p in Ap[j]:Ap[j+1]-1
+                Fjv[Ai[p]] = Av[p]
+            end
+
+            # Pull in updates
+            for (k,pvals) in kvals
+                f = Fv[Fp[k]]*Fv[first(pvals)]
+                for p in pvals
+                    # We compute a few dropped fill-ins here. It turns out computing 
+                    # and discarding is faster than introducing a branch. 
+                    Fjv[Fi[p]] -= Fv[p]*f
+                end
+            end
+
+            # Copy temporary column into F
+            d = Fjv[j]
+            Fv[Fp[j]] = d
+            for p in Fp[j]+1:Fp[j+1]-1
+                Fv[p] = Fjv[Fi[p]]/d
             end
         end
-
-        # Copy temporary column into F
-        d = Fjv[j]
-        Fv[Fp[j]] = d
-        for p in Fp[j]+1:Fp[j+1]-1
-            Fv[p] = Fjv[Fi[p]]/d
-        end
+        return Fv
     end
-    return Fv
 end
 
 
 
 
 function selinv_jki(Fp,Fi,Fv)
-    Ti = eltype(Fp)
-    Tv = eltype(Fv)
-    n = length(Fp)-1
+    checkmat(Fp,Fi,Fv)
 
-    # Return variables
-    Bv = Vector{Tv}(length(Fi))
+    @inbounds begin
+        Ti = eltype(Fp)
+        Tv = eltype(Fv)
+        n = length(Fp)-1
 
-    # Workspace for a single column
-    Fjv = Vector{Tv}(n)
-    Bjv = Vector{Tv}(n)
+        # Return variables
+        Bv = Vector{Tv}(length(Fi))
 
-    # Main algorithm
-    for j in reverse(1:n)
-        # Initialise column
-        for p in Fp[j]+1:Fp[j+1]-1
-            Fjv[Fi[p]] = Fv[p]
-            Bjv[Fi[p]] = zero(Tv)
-        end
+        # Workspace for a single column
+        Fjv = Vector{Tv}(n)
+        Bjv = Vector{Tv}(n)
 
-        # Pull in updates
-        for p in Fp[j]+1:Fp[j+1]-1
-            k = Fi[p]
-            Fkj = Fjv[k]
-            Bjv[k] -= Bv[Fp[k]]*Fkj
-            for p in Fp[k]+1:Fp[k+1]-1
-                i = Fi[p]
-                Fij = Fjv[i]
-                Bjv[i] -= Bv[p] *Fkj
-                Bjv[k] -= Bv[p]'*Fij
+        # Main algorithm
+        for j in reverse(1:n)
+            # Initialise column
+            for p in Fp[j]+1:Fp[j+1]-1
+                Fjv[Fi[p]] = Fv[p]
+                Bjv[Fi[p]] = zero(Tv)
             end
-        end
 
-        # Copy temporary column into B
-        for p in Fp[j]+1:Fp[j+1]-1
-            Fjv[Fi[p]] = zero(Tv)
-            Bv[p] = Bjv[Fi[p]]
-        end
+            # Pull in updates
+            for p in Fp[j]+1:Fp[j+1]-1
+                k = Fi[p]
+                Fkj = Fjv[k]
+                Bjv[k] -= Bv[Fp[k]]*Fkj
+                for p in Fp[k]+1:Fp[k+1]-1
+                    i = Fi[p]
+                    Fij = Fjv[i]
+                    Bjv[i] -= Bv[p] *Fkj
+                    Bjv[k] -= Bv[p]'*Fij
+                end
+            end
 
-        # Deal with diagonal
-        d = inv(Fv[Fp[j]])
-        for p in Fp[j]+1:Fp[j+1]-1
-            d -= Bv[p]*Fv[p]
+            # Copy temporary column into B
+            for p in Fp[j]+1:Fp[j+1]-1
+                Fjv[Fi[p]] = zero(Tv)
+                Bv[p] = Bjv[Fi[p]]
+            end
+
+            # Deal with diagonal
+            d = inv(Fv[Fp[j]])
+            for p in Fp[j]+1:Fp[j+1]-1
+                d -= Bv[p]*Fv[p]
+            end
+            Bv[Fp[j]] = d
         end
-        Bv[Fp[j]] = d
+        return Bv
     end
-    return Bv
 end
 
 end # module

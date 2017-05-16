@@ -3,6 +3,21 @@ using Base.Test
 
 T = IncompleteSelectedInversion
 
+@testset "errors" begin
+    Ap = [1,2]
+    Ai = [2]
+    @test_throws Exception T.checkmat(Ap,Ai)
+
+    Ap = [1,3]
+    Ai = [1]
+    @test_throws Exception T.checkmat(Ap,Ai)
+
+    Ap = [1,3]
+    Ai = [1,2]
+    Av = [1]
+    @test_throws Exception T.checkmat(Ap,Ai,Av)
+end
+
 @testset "iterate_jkp" begin
     srand(42)
     for i = 1:100
