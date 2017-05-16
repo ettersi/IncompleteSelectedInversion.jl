@@ -169,7 +169,7 @@ function symbolic(Ap,Ai,c)
             # Pull in updates
             for (k,pvals) in kvals
                 lkj = Fl[first(pvals)]
-                if lkj >= c; return; end
+                if lkj >= c; continue; end
                 lasti = n+1
                 for p in pvals
                     i = Fi[p]
