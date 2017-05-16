@@ -1,10 +1,20 @@
 module IncompleteSelectedInversion
 
-#immutable UnsafeArrayWrapper{T,N} <: AbstractArray{T,N}
-#    data::Ptr{T}
-#    dims::NTuple{N,Int}
-#    IsbitsArrayWrapper(a::AbstractArray{T,N})
-#end
+immutable IsbitsArrayWrapper{T,N} <: AbstractArray{T,N}
+    data::Ptr{T}
+    dims::NTuple{N,Int}
+end
+IsbitsArrayWrapper(a::AbstractArray) = IsbitsArrayWrapper(pointer(a),size(a))
+Base.size(A::IsbitsArrayWrapper) = A.dims
+@inline function Base.getindex(A::IsbitsArrayWrapper, i::Int) 
+    #@boundscheck checkbounds(A,i)
+    return unsafe_load(A.data,i)
+end
+@inline function Base.setindex!(A::IsbitsArrayWrapper, v, i::Int) 
+    #@boundscheck checkbounds(A,i)
+    return unsafe_store!(A.data,v,i)
+end
+Base.linearindexing{T,N}(::Type{IsbitsArrayWrapper{T,N}}) = Base.LinearFast()
 
 
 #=
@@ -40,8 +50,8 @@ Base.done(s::SortedIntSet,p) = s.next[p] == length(s.next)
     end
 end
 
-@inline function Base.insert!(s::SortedIntSet,i,p)
-    next = s.next
+@inline function Base.insert!(s::SortedIntSet,next,i,p)
+    #next = s.next
     n = length(next)-1
 
     @boundscheck begin
@@ -153,6 +163,7 @@ function symbolic(Ap,Ai,c)
 
         # Workspace for a single column
         Fji = SortedIntSet(n)
+        next = Fji.next
         Fjl = Vector{Int}(n)
 
         # Main algorithm
@@ -164,7 +175,7 @@ function symbolic(Ap,Ai,c)
             for p in Ap[j]:Ap[j+1]-1
                 i = Ai[p]
                 if i <= j; continue; end
-                insert!(Fji,i,lasti)
+                insert!(Fji,next,i,lasti)
                 Fjl[i] = 0 
                 lasti = i
             end
@@ -179,7 +190,7 @@ function symbolic(Ap,Ai,c)
                     lik = Fl[p]
                     Flij = lik + lkj + 1
                     if Flij <= c
-                        if insert!(Fji,i,lasti)
+                        if insert!(Fji,next,i,lasti)
                             Fjl[i] = Flij
                         else
                             Fjl[i] = min(Fjl[i],Flij)
