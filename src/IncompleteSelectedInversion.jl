@@ -181,4 +181,99 @@ end
 
 
 
+
+
+function numeric(Ap,Ai,Av,Fp,Fi)
+    Ti = eltype(Ap)
+    Tv = eltype(Av)
+    n = length(Ap)-1
+
+    # Return variables
+    Fv = Vector{Tv}(length(Fi))
+
+    # Workspace for a single column
+    Fjv = Vector{Tv}(n)
+
+    # Main algorithm
+    for (j,kvals) in iterate_jkp(Fp,Fi)
+        # Initialise column
+        for p in Fp[j]:Fp[j+1]-1
+            Fjv[Fi[p]] = zero(Tv)
+        end
+        for p in Ap[j]:Ap[j+1]-1
+            Fjv[Ai[p]] = Av[p]
+        end
+
+        # Pull in updates
+        for (k,pvals) in kvals
+            f = Fv[Fp[k]]*Fv[first(pvals)]
+            for p in pvals
+                # We compute a few dropped fill-ins here. It turns out computing 
+                # and discarding is faster than introducing a branch. 
+                Fjv[Fi[p]] -= Fv[p]*f
+            end
+        end
+
+        # Copy temporary column into F
+        d = Fjv[j]
+        Fv[Fp[j]] = d
+        for p in Fp[j]+1:Fp[j+1]-1
+            Fv[p] = Fjv[Fi[p]]/d
+        end
+    end
+    return Fv
+end
+
+
+
+
+function selinv_jki(Fp,Fi,Fv)
+    Ti = eltype(Fp)
+    Tv = eltype(Fv)
+    n = length(Fp)-1
+
+    # Return variables
+    Bv = Vector{Tv}(length(Fi))
+
+    # Workspace for a single column
+    Fjv = Vector{Tv}(n)
+    Bjv = Vector{Tv}(n)
+
+    # Main algorithm
+    for j in reverse(1:n)
+        # Initialise column
+        for p in Fp[j]+1:Fp[j+1]-1
+            Fjv[Fi[p]] = Fv[p]
+            Bjv[Fi[p]] = zero(Tv)
+        end
+
+        # Pull in updates
+        for p in Fp[j]+1:Fp[j+1]-1
+            k = Fi[p]
+            Fkj = Fjv[k]
+            Bjv[k] -= Bv[Fp[k]]*Fkj
+            for p in Fp[k]+1:Fp[k+1]-1
+                i = Fi[p]
+                Fij = Fjv[i]
+                Bjv[i] -= Bv[p] *Fkj
+                Bjv[k] -= Bv[p]'*Fij
+            end
+        end
+
+        # Copy temporary column into B
+        for p in Fp[j]+1:Fp[j+1]-1
+            Fjv[Fi[p]] = zero(Tv)
+            Bv[p] = Bjv[Fi[p]]
+        end
+
+        # Deal with diagonal
+        d = inv(Fv[Fp[j]])
+        for p in Fp[j]+1:Fp[j+1]-1
+            d -= Bv[p]*Fv[p]
+        end
+        Bv[Fp[j]] = d
+    end
+    return Bv
+end
+
 end # module
