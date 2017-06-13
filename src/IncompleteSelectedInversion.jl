@@ -276,13 +276,16 @@ function selinv_jki(Fp,Fi,Fv)
             for p in Fp[j]+1:Fp[j+1]-1
                 k = Fi[p]
                 Fkj = Fjv[k]
-                Bjv[k] -= Bv[Fp[k]]*Fkj
+                Bkj = Bjv[k] - Bv[Fp[k]]*Fkj
                 for p in Fp[k]+1:Fp[k+1]-1
                     i = Fi[p]
                     Fij = Fjv[i]
-                    Bjv[i] -= Bv[p] *Fkj
-                    Bjv[k] -= Bv[p]'*Fij
+                    Bik = Bv[p]
+                    Bjv[i] -= Bik *Fkj
+                    Bkj    -= Bik'*Fij
+                    # ^ Not factoring out Bkj = Bjv[k] completely destroys loop performance
                 end
+                Bjv[k] = Bkj
             end
 
             # Copy temporary column into B
