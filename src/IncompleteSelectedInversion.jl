@@ -298,4 +298,35 @@ function selinv_jki(Fp,Fi,Fv)
     end
 end
 
+
+
+#=
+ Utility functions
+=#
+
+function dropfillin(Fp,Fi,Fl,c)
+    Ti = eltype(Fp)
+    n = length(Fp)-1
+    F̃p = Vector{Ti}(n+1)
+    F̃p[1] = 1
+    F̃i = Vector{Ti}(0)
+    F̃l = Vector{Ti}(0)
+    for j = 1:n
+        for p in Fp[j]:Fp[j+1]-1
+            if Fl[p] <= c
+                push!(F̃i,Fi[p])
+                push!(F̃l,Fl[p])
+            end
+        end
+        F̃p[j+1] = length(F̃i)+1
+    end
+    return F̃p,F̃i,F̃l
+end
+
+unpacksparse(A) = A.colptr,A.rowval,A.nzval
+function packsparse(p,i,v)
+    n = length(p)-1
+    return SparseMatrixCSC(n,n,p,i,v)
+end
+
 end # module
