@@ -249,7 +249,7 @@ function numeric(Ap,Ai,Av,Fp,Fi)
 end
 
 
-function selinv_jki(Fp,Fi,Fv)
+function selinv(Fp,Fi,Fv)
     checkmat(Fp,Fi,Fv)
 
     @inbounds begin
@@ -303,98 +303,6 @@ function selinv_jki(Fp,Fi,Fv)
         end
         return Bv
     end
-end
-
-
-function permute4selinv(Fp,Fi,Fv)
-    # Parts of this function are adapted from Base.halfperm!
-    checkmat(Fp,Fi,Fv)
-
-    @inbounds begin
-        Ti = eltype(Fp)
-        Tv = eltype(Fv)
-        n = length(Fp)-1
-
-        Fq = zeros(Ti,n+1)
-        Fj = Vector{Ti}(length(Fi))
-        Fw = Vector{Tv}(length(Fv))
-
-        # Compute counts
-        for p in 1:length(Fi)
-            Fq[n-Fi[p]+2] += 1
-        end
-
-        # Transform to pointers
-        Fq[1] = 1
-        countsum = 1
-        for k in 2:n+1
-            overwritten = Fq[k]
-            Fq[k] = countsum
-            countsum += overwritten
-        end
-
-        # Copy indices and values
-        for j in reverse(1:n)
-            for p in Fp[j]:Fp[j+1]-1
-                i = Fi[p]
-                q = Fq[n-i+2]
-                Fj[q] = n-j+1
-                Fw[q] = Fv[p]
-                Fq[n-i+2] += 1
-            end
-        end
-
-        return Fq,Fj,Fw
-    end
-end
-
-function selinv_kij(Fq,Fj,Fw)
-    checkmat(Fq,Fj,Fw)
-
-    @inbounds begin
-        Ti = eltype(Fq)
-        Tv = eltype(Fw)
-        n = length(Fq)-1
-
-        # Return variables
-        Bw = Vector{Tv}(length(Fj))
-
-        # Workspace for a single row
-        Fkw = zeros(Tv,n)
-        Bkw = zeros(Tv,n)
-
-        # Main algorithm
-        for (k,ivals) in iterate_jkp(Fq,Fj)
-            # Initialise
-            Bkw[k] = zero(Tv)
-            for q in Fq[k]+1:Fq[k+1]-1
-                Fkw[Fj[q]] = Fw[q]
-                Bkw[Fj[q]] = zero(Tv)
-            end
-
-            for (i,qvals) in ivals
-                # Push updates from B[k,k+1:n]
-                Bki = Bw[qvals[1]]'
-                for q in qvals
-                    Bkw[Fj[q]] -= Bki*Fw[q]
-                end
-
-                # Push updates from B[k+1:n,k]
-                Bik = Bw[qvals[1]]
-                for q in qvals[2:end]
-                    Bw[q] -= Bik*Fkw[Fj[q]]
-                end
-            end
-
-            # Push from diagonal, and clean up
-            d = Bw[Fq[k]] = inv(Fw[Fq[k]]) + Bkw[k]
-            for q in Fq[k]+1:Fq[k+1]-1
-                Fkw[Fj[q]] = zero(Tv)
-                Bw[q] = Bkw[Fj[q]] - d*Fw[q]
-            end
-        end
-    end
-    return Bw
 end
 
 
