@@ -139,7 +139,8 @@ function checkmat(Ap,Ai,Ax,Ay...)
 end
 
 
-function symbolic(Ap,Ai,c)
+export symbolic_ldlt
+function symbolic_ldlt(Ap,Ai,c)
     checkmat(Ap,Ai)
 
     @inbounds begin
@@ -202,7 +203,8 @@ function symbolic(Ap,Ai,c)
 end
 
 
-function numeric(Ap,Ai,Av,Fp,Fi)
+export numeric_ldlt
+function numeric_ldlt(Ap,Ai,Av,Fp,Fi)
     checkmat(Ap,Ai,Av)
     checkmat(Fp,Fi)
 
@@ -249,7 +251,8 @@ function numeric(Ap,Ai,Av,Fp,Fi)
 end
 
 
-function selinv(Fp,Fi,Fv)
+export selinv_ldlt
+function selinv_ldlt(Fp,Fi,Fv)
     checkmat(Fp,Fi,Fv)
 
     @inbounds begin
@@ -311,6 +314,7 @@ end
  Utility functions
 =#
 
+export dropfillin
 function dropfillin(Fp,Fi,Fl,c)
     Ti = eltype(Fp)
     n = length(Fp)-1
@@ -330,6 +334,7 @@ function dropfillin(Fp,Fi,Fl,c)
     return F̃p,F̃i,F̃l
 end
 
+export unpacksparse, packsparse
 unpacksparse(A) = A.colptr,A.rowval,A.nzval
 function packsparse(p,i,v)
     n = length(p)-1

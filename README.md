@@ -1,7 +1,27 @@
 # IncompleteSelectedInversion
 
-[![Build Status](https://travis-ci.org/ettersi/IncompleteSelectedInversion.jl.svg?branch=master)](https://travis-ci.org/ettersi/IncompleteSelectedInversion.jl)
+Example usage:
+```julia
+# Load package
+using IncompleteSelectedInversion
 
-[![Coverage Status](https://coveralls.io/repos/ettersi/IncompleteSelectedInversion.jl/badge.svg?branch=master&service=github)](https://coveralls.io/github/ettersi/IncompleteSelectedInversion.jl?branch=master)
+# Parameters
+n = 10
+c = n # Cut-off level-of-fill. c = n is complete factorisation
 
-[![codecov.io](http://codecov.io/github/ettersi/IncompleteSelectedInversion.jl/coverage.svg?branch=master)](http://codecov.io/github/ettersi/IncompleteSelectedInversion.jl?branch=master)
+# Create test matrix
+A = sprand(n,n,0.1)
+A += A' + 5*I
+Ap,Ai,Av = unpacksparse(A)
+
+# Factorise and invert
+Fp,Fi,Fl = symbolic_ldlt(Ap,Ai,c) 
+Fp,Fi,Fl = dropfillin(Fp,Fi,Fl,c) # Drop fillin from precomputed symbolic factorisation
+Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
+Bv = selinv_ldlt(Fp,Fi,Fv)
+B = packsparse(Fp,Fi,Bv)
+
+# Compare results
+display(inv(full(A))); println()
+display(full(B)); println()
+```

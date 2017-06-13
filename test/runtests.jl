@@ -53,7 +53,7 @@ end
         A = I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
         Ap,Ai = A.colptr,A.rowval
 
-        Fp,Fi = T.symbolic(Ap,Ai,n)
+        Fp,Fi = symbolic_ldlt(Ap,Ai,n)
         F = SparseMatrixCSC(n,n,Fp,Fi,ones(Bool,length(Fi)))
         F̂ = tril(lufact(full(A),Val{false}).factors .!= 0)
         @test (F == F̂) == true
@@ -68,8 +68,8 @@ end
         A = I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
         Ap,Ai,Av = A.colptr,A.rowval,A.nzval
 
-        Fp,Fi = T.symbolic(Ap,Ai,n)
-        Fv = T.numeric(Ap,Ai,Av,Fp,Fi)
+        Fp,Fi = symbolic_ldlt(Ap,Ai,n)
+        Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
         F = SparseMatrixCSC(n,n,Fp,Fi,Fv)
         F̂ = tril(lufact(full(A),Val{false}).factors)
         @test (F ≈ F̂) == true
@@ -85,9 +85,9 @@ end
         #   ^ need to make sure matrix is sufficiently well conditioned
         Ap,Ai,Av = A.colptr,A.rowval,A.nzval
 
-        Fp,Fi = T.symbolic(Ap,Ai,n)
-        Fv = T.numeric(Ap,Ai,Av,Fp,Fi)
-        Bv = T.selinv(Fp,Fi,Fv)
+        Fp,Fi = symbolic_ldlt(Ap,Ai,n)
+        Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
+        Bv = selinv_ldlt(Fp,Fi,Fv)
         B = SparseMatrixCSC(n,n,Fp,Fi,Bv)
         B̂ = inv(full(A))
         @test all(Bi == 0 || Bi ≈ B̂i for (Bi,B̂i) in zip(B,B̂))
