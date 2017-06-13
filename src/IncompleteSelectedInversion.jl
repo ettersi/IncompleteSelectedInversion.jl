@@ -55,6 +55,10 @@ end
 
 
 
+#=
+ Iterate through a sparse matrix in the order required
+ by the LDL^T factorisation. 
+=#
 
 iterate_jkp(Ap,Ai) = Iteration_jkp(Ap,Ai)
 
@@ -166,7 +170,7 @@ function symbolic(Ap,Ai,c)
                 lasti = i
             end
 
-            # Pull in updates
+            # Pull updates into L[j:n,j]
             for (k,pvals) in kvals
                 lkj = Fl[first(pvals)]
                 if lkj >= c; continue; end
@@ -223,7 +227,7 @@ function numeric(Ap,Ai,Av,Fp,Fi)
                 Fjv[Ai[p]] = Av[p]
             end
 
-            # Pull in updates
+            # Pull updates into L[j:n,j]
             for (k,pvals) in kvals
                 f = Fv[Fp[k]]*Fv[first(pvals)]
                 for p in pvals
@@ -268,7 +272,7 @@ function selinv_jki(Fp,Fi,Fv)
                 Bjv[Fi[p]] = zero(Tv)
             end
 
-            # Pull in updates
+            # Pull updates into B[j+1:n,j]
             for p in Fp[j]+1:Fp[j+1]-1
                 k = Fi[p]
                 Fkj = Fjv[k]
