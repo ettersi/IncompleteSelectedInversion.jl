@@ -76,7 +76,7 @@ end
     end
 end
 
-@testset "selinv" begin
+@testset "selinv_jki" begin
     srand(42)
     for i = 1:100
         n = rand(1:100)
@@ -90,6 +90,25 @@ end
         Bv = T.selinv_jki(Fp,Fi,Fv)
         B = SparseMatrixCSC(n,n,Fp,Fi,Bv)
         B̂ = inv(full(A))
+        @test all(Bi == 0 || Bi ≈ B̂i for (Bi,B̂i) in zip(B,B̂))
+    end
+end
+
+@testset "selinv_kij" begin
+    srand(42)
+    for i = 1:100
+        n = rand(1:100)
+        fill = rand(1:20)
+        A = 3I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
+        #   ^ need to make sure matrix is sufficiently well conditioned
+        Ap,Ai,Av = A.colptr,A.rowval,A.nzval
+
+        Fp,Fi = T.symbolic(Ap,Ai,n)
+        Fv = T.numeric(Ap,Ai,Av,Fp,Fi)
+        Fq,Fj,Fw = T.permute4selinv(Fp,Fi,Fv)
+        Bw = T.selinv_kij(Fq,Fj,Fw)
+        B = T.packsparse(Fq,Fj,Bw)
+        B̂ = inv(full(A))[end:-1:1,end:-1:1]
         @test all(Bi == 0 || Bi ≈ B̂i for (Bi,B̂i) in zip(B,B̂))
     end
 end
