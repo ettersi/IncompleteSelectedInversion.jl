@@ -62,35 +62,38 @@ end
 
 @testset "numeric" begin
     srand(42)
-    for i = 1:100
-        n = rand(1:100)
-        fill = rand(1:20)
-        A = I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
-        Ap,Ai,Av = A.colptr,A.rowval,A.nzval
+    for T in (Float32,Float64,Complex64,Complex128)
+        for i = 1:100
+            n = rand(1:100)
+            fill = rand(1:20)
+            A = 4I + sprand(T,n,n,min(1.,0.5*fill/n)); A += A'
+            Ap,Ai,Av = A.colptr,A.rowval,A.nzval
 
-        Fp,Fi = symbolic_ldlt(Ap,Ai,n)
-        Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
-        F = SparseMatrixCSC(n,n,Fp,Fi,Fv)
-        F̂ = tril(lufact(full(A),Val{false}).factors)
-        @test (F ≈ F̂) == true
+            Fp,Fi = symbolic_ldlt(Ap,Ai,n)
+            Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
+            F = SparseMatrixCSC(n,n,Fp,Fi,Fv)
+            F̂ = tril(lufact(full(A),Val{false}).factors)
+            @test vecnorm(F - F̂,Inf)/vecnorm(F̂,Inf) < sqrt(eps(real(T)))
+        end
     end
 end
 
 @testset "selinv" begin
     srand(42)
-    for i = 1:100
-        n = rand(1:100)
-        fill = rand(1:20)
-        A = 3I + sprand(n,n,min(1.,0.5*fill/n)); A += A'
-        #   ^ need to make sure matrix is sufficiently well conditioned
-        Ap,Ai,Av = A.colptr,A.rowval,A.nzval
+    for T in (Float32,Float64,Complex64,Complex128)
+        for i = 1:100
+            n = rand(1:100)
+            fill = rand(1:20)
+            A = 4I + sprand(T,n,n,min(1.,0.5*fill/n)); A += A'
+            Ap,Ai,Av = A.colptr,A.rowval,A.nzval
 
-        Fp,Fi = symbolic_ldlt(Ap,Ai,n)
-        Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
-        Bv = selinv_ldlt(Fp,Fi,Fv)
-        B = SparseMatrixCSC(n,n,Fp,Fi,Bv)
-        B̂ = inv(full(A))
-        @test all(Bi == 0 || Bi ≈ B̂i for (Bi,B̂i) in zip(B,B̂))
+            Fp,Fi = symbolic_ldlt(Ap,Ai,n)
+            Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi)
+            Bv = selinv_ldlt(Fp,Fi,Fv)
+            B = SparseMatrixCSC(n,n,Fp,Fi,Bv)
+            B̂ = inv(full(A))
+            @test vecnorm((Bi == 0 ? zero(T) : Bi - B̂i for (Bi,B̂i) in zip(B,B̂)),Inf)/vecnorm(B̂,Inf) < sqrt(eps(real(T)))
+        end
     end
 end
 

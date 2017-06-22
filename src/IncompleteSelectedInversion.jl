@@ -231,7 +231,7 @@ function numeric_ldlt(Ap,Ai,Av,Fp,Fi)
 
             # Pull updates into L[j:n,j]
             for (k,pvals) in kvals
-                f = Fv[Fp[k]]*Fv[first(pvals)]
+                f = Fv[Fp[k]]*Fv[first(pvals)]'
                 for p in pvals
                     # We compute a few dropped fill-ins here. It turns out computing 
                     # and discarding is faster than introducing a branch. 
@@ -300,7 +300,7 @@ function selinv_ldlt(Fp,Fi,Fv)
             # Deal with diagonal
             d = inv(Fv[Fp[j]])
             for p in Fp[j]+1:Fp[j+1]-1
-                d -= Bv[p]*Fv[p]
+                d -= Bv[p]'*Fv[p]
             end
             Bv[Fp[j]] = d
         end
