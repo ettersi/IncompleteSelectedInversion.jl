@@ -204,7 +204,7 @@ end
 
 
 export numeric_ldlt
-function numeric_ldlt(Ap,Ai,Av,Fp,Fi)
+function numeric_ldlt(Ap,Ai,Av,Fp,Fi; conj = Base.conj)
     checkmat(Ap,Ai,Av)
     checkmat(Fp,Fi)
 
@@ -231,7 +231,7 @@ function numeric_ldlt(Ap,Ai,Av,Fp,Fi)
 
             # Pull updates into L[j:n,j]
             for (k,pvals) in kvals
-                f = Fv[Fp[k]]*Fv[first(pvals)]'
+                f = Fv[Fp[k]]*conj(Fv[first(pvals)])
                 for p in pvals
                     # We compute a few dropped fill-ins here. It turns out computing 
                     # and discarding is faster than introducing a branch. 
@@ -252,7 +252,7 @@ end
 
 
 export selinv_ldlt
-function selinv_ldlt(Fp,Fi,Fv)
+function selinv_ldlt(Fp,Fi,Fv; conj = Base.conj)
     checkmat(Fp,Fi,Fv)
 
     @inbounds begin
@@ -284,8 +284,8 @@ function selinv_ldlt(Fp,Fi,Fv)
                     i = Fi[p]
                     Fij = Fjv[i]
                     Bik = Bv[p]
-                    Bjv[i] -= Bik *Fkj
-                    Bkj    -= Bik'*Fij
+                    Bjv[i] -=      Bik *Fkj
+                    Bkj    -= conj(Bik)*Fij
                     # ^ Not factoring out Bkj = Bjv[k] completely destroys loop performance
                 end
                 Bjv[k] = Bkj
@@ -300,7 +300,7 @@ function selinv_ldlt(Fp,Fi,Fv)
             # Deal with diagonal
             d = inv(Fv[Fp[j]])
             for p in Fp[j]+1:Fp[j+1]-1
-                d -= Bv[p]'*Fv[p]
+                d -= conj(Bv[p])*Fv[p]
             end
             Bv[Fp[j]] = d
         end
