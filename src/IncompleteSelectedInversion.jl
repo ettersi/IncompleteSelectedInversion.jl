@@ -140,7 +140,7 @@ end
 
 
 export symbolic_ldlt
-function symbolic_ldlt(Ap,Ai,c)
+function symbolic_ldlt(Ap,Ai, c=length(Ap)-1)
     checkmat(Ap,Ai)
 
     @inbounds begin
@@ -154,7 +154,6 @@ function symbolic_ldlt(Ap,Ai,c)
 
         # Workspace for a single column
         Fji = SortedIntSet(n)
-        next = Fji.next
         Fjl = Vector{Int}(n)
 
         # Main algorithm
