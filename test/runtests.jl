@@ -80,6 +80,25 @@ end
     end
 end
 
+@testset "tolerance" begin
+    srand(42)
+    for T in (Float32,Float64,Complex64,Complex128)
+        for (cconj,ctransp) in ((conj,ctranspose),(identity,transpose))
+            for i = 1:25
+                n = rand(1:100)
+                fill = rand(1:20)
+                A = 4I + sprand(T,n,n,min(1.,0.5*fill/n)); A += ctransp(A)
+                Ap,Ai,Av = A.colptr,A.rowval,A.nzval
+
+                Fp,Fi,Fv = tolerance_ldlt(Ap,Ai,Av, 0; conj = cconj)
+                F = SparseMatrixCSC(n,n,Fp,Fi,Fv)
+                L = tril(F,-1) + I; D = Diagonal(F);
+                @test L*D*ctransp(L) ≈ A
+            end
+        end
+    end
+end
+
 @testset "selinv" begin
     srand(42)
     for T in (Float32,Float64,Complex64,Complex128)

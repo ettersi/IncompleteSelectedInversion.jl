@@ -249,6 +249,71 @@ function numeric_ldlt(Ap,Ai,Av,Fp,Fi; conj = Base.conj)
     end
 end
 
+export tolerance_ldlt
+function tolerance_ldlt(Ap,Ai,Av,τ; conj = Base.conj)
+    checkmat(Ap,Ai,Av)
+
+    @inbounds begin
+        Ti = eltype(Ap)
+        n = length(Ap)-1
+        Tv = eltype(Av)
+
+        # Return variables
+        Fp = Vector{Ti}(n+1); Fp[1] = 1
+        Fi = Vector{Ti}(0)
+        Fv = Vector{Tv}(0)
+
+        # Workspace for a single column
+        Fji = SortedIntSet(n)
+        Fjv = Vector{Tv}(n)
+
+        # Main algorithm
+        for (j,kvals) in iterate_jkp(Fp,Fi)
+            # Initialise column
+            init!(Fji,j)
+            Fjv[j] = zero(Tv)
+            lasti = j
+            for p in Ap[j]:Ap[j+1]-1
+                i = Ai[p]
+                if i < j; continue; end
+                insert!(Fji,i,lasti)
+                Fjv[Ai[p]] = Av[p]
+                lasti = i
+            end
+
+            # Pull updates into L[j:n,j]
+            for (k,pvals) in kvals
+                lasti = n+1
+                Fvkj = conj(Fv[first(pvals)])
+                if abs(Fvkj) < τ; continue; end
+                Fvjj = Fv[Fp[k]]
+                f = Fvjj*Fvkj
+                for p in pvals
+                    i = Fi[p]
+                    Fvp = Fv[p]
+                    if abs(Fvp) < τ; continue; end
+                    Fjv[i] = ifelse(
+                        insert!(Fji,i,lasti),
+                        -Fvp*f,
+                        Fjv[i] - Fvp*f
+                    )
+                    lasti = i
+                end
+            end
+
+            # Copy temporary column into F
+            push!(Fi,j)
+            d = Fjv[j]
+            push!(Fv,d)
+            for i in drop(Fji,1)
+                push!(Fi,i)
+                push!(Fv,Fjv[i]/d)
+            end
+            Fp[j+1] = length(Fi)+1
+        end
+        return Fp,Fi,Fv
+    end
+end
 
 export selinv_ldlt
 function selinv_ldlt(Fp,Fi,Fv; conj = Base.conj)
