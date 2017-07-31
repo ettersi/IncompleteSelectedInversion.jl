@@ -90,7 +90,7 @@ end
                 A = 4I + sprand(T,n,n,min(1.,0.5*fill/n)); A += ctransp(A)
                 Ap,Ai,Av = A.colptr,A.rowval,A.nzval
 
-                Fp,Fi,Fv = tolerance_ldlt(Ap,Ai,Av, 0; conj = cconj)
+                Fp,Fi,Fv = ldlt(Ap,Ai,Av, 0; conj = cconj)
                 F = SparseMatrixCSC(n,n,Fp,Fi,Fv)
                 L = tril(F,-1) + I; D = Diagonal(F);
                 @test L*D*ctransp(L) ≈ A

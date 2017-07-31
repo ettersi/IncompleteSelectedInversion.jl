@@ -139,8 +139,57 @@ function checkmat(Ap,Ai,Ax,Ay...)
 end
 
 
+# Note: There are better algorithms for computing the full symbolic LDL^T factorisation!
 export symbolic_ldlt
-function symbolic_ldlt(Ap,Ai, c=length(Ap)-1)
+function symbolic_ldlt(Ap,Ai)
+    checkmat(Ap,Ai)
+
+    @inbounds begin
+        Ti = eltype(Ap)
+        n = length(Ap)-1
+
+        # Return variables
+        Fp = Vector{Ti}(n+1); Fp[1] = 1
+        Fi = Vector{Ti}(0)
+
+        # Workspace for a single column
+        Fji = SortedIntSet(n)
+
+        # Main algorithm
+        for (j,kvals) in iterate_jkp(Fp,Fi)
+            # Initialise column
+            init!(Fji,j)
+            lasti = j
+            for p in Ap[j]:Ap[j+1]-1
+                i = Ai[p]
+                if i <= j; continue; end
+                insert!(Fji,i,lasti)
+                lasti = i
+            end
+
+            # Pull updates into L[j:n,j]
+            for (k,pvals) in kvals
+                lasti = n+1
+                for p in pvals
+                    i = Fi[p]
+                    insert!(Fji,i,lasti)
+                    lasti = i
+                end
+            end
+
+            # Copy temporary column into F
+            for i in Fji
+                push!(Fi,i)
+            end
+            Fp[j+1] = length(Fi)+1
+        end
+        return Fp,Fi
+    end
+end
+
+
+export symbolic_cldlt
+function symbolic_cldlt(Ap,Ai,c)
     checkmat(Ap,Ai)
 
     @inbounds begin
@@ -249,8 +298,9 @@ function numeric_ldlt(Ap,Ai,Av,Fp,Fi; conj = Base.conj)
     end
 end
 
-export tolerance_ldlt
-function tolerance_ldlt(Ap,Ai,Av,τ; conj = Base.conj)
+
+export τldlt
+function τldlt(Ap,Ai,Av, τ=0; conj = Base.conj)
     checkmat(Ap,Ai,Av)
 
     @inbounds begin
@@ -292,11 +342,11 @@ function tolerance_ldlt(Ap,Ai,Av,τ; conj = Base.conj)
                     i = Fi[p]
                     Fvp = Fv[p]
                     if abs(Fvp) < τ; continue; end
-                    Fjv[i] = ifelse(
-                        insert!(Fji,i,lasti),
-                        -Fvp*f,
-                        Fjv[i] - Fvp*f
-                    )
+                    if insert!(Fji,i,lasti)
+                        Fjv[i] = -Fvp*f
+                    else
+                        Fjv[i] -= Fvp*f
+                    end
                     lasti = i
                 end
             end
@@ -315,8 +365,8 @@ function tolerance_ldlt(Ap,Ai,Av,τ; conj = Base.conj)
     end
 end
 
-export selinv_ldlt
-function selinv_ldlt(Fp,Fi,Fv; conj = Base.conj)
+export selinv
+function selinv(Fp,Fi,Fv; conj = Base.conj)
     checkmat(Fp,Fi,Fv)
 
     @inbounds begin
@@ -370,6 +420,39 @@ function selinv_ldlt(Fp,Fi,Fv; conj = Base.conj)
         end
         return Bv
     end
+end
+
+
+export ldlt, cldlt, τldlt
+function ldlt(Ap,Ai,Av; conj = Base.conj)
+    Fp,Fi = symbolic_ldlt(Ap,Ai)
+    Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi; conj=conj)
+    return Fp,Fi,Fv
+end
+function cldlt(Ap,Ai,Av, c; conj = Base.conj)
+    Fp,Fi,Fl = symbolic_cldlt(Ap,Ai, c)
+    Fv = numeric_ldlt(Ap,Ai,Av,Fp,Fi; conj=conj)
+    return Fp,Fi,Fl,Fv
+end
+function ldlt(A; conj = Base.conj)
+    Ap,Ai,Av = unpacksparse(A)
+    Fp,Fi,Fv = ldlt(Ap,Ai,Av; conj = conj)
+    return packsparse(Fp,Fi,Fv)
+end
+function cldlt(A, c; conj = Base.conj)
+    Ap,Ai,Av = unpacksparse(A)
+    Fp,Fi,Fl,Fv = cldlt(Ap,Ai,Av, c; conj = conj)
+    return packsparse(Fp,Fi,Fv)
+end
+function τldlt(A, τ; conj = Base.conj)
+    Ap,Ai,Av = unpacksparse(A)
+    Fp,Fi,Fl,Fv = τldlt(Ap,Ai,Av, τ; conj = conj)
+    return packsparse(Fp,Fi,Fv)
+end
+function selinv(F; conj = Base.conj)
+    Fp,Fi,Fv = unpacksparse(F)
+    Bv = selinv(Fp,Fi,Fv; conj=conj)
+    return packsparse(Fp,Fi,Bv)
 end
 
 
