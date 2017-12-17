@@ -488,4 +488,27 @@ function packsparse(p,i,v)
     return SparseMatrixCSC(n,n,p,i,v)
 end
 
+export CholeskyPreconditioner
+import Base.LinAlg: A_ldiv_B!, \
+struct CholeskyPreconditioner{T, S <: AbstractSparseMatrix{T}}
+    L::LowerTriangular{T, S}
+end
+function CholeskyPreconditioner(A, c)
+    L = cldlt(A,c)
+    @inbounds for j in 1:size(L, 2)
+        d = sqrt(L[j,j])
+        L[j,j] = d
+        for i in Base.Iterators.drop(nzrange(L,j), 1)
+            L.nzval[i] *= d
+        end
+    end
+    return CholeskyPreconditioner(LowerTriangular(L))
+end
+function A_ldiv_B!(y::AbstractVector{T}, C::CholeskyPreconditioner{T, S}, b::AbstractVector{T}) where {T, S <: AbstractSparseMatrix{T}}
+    y .= b
+    A_ldiv_B!(C.L, y)
+    return y
+end
+(\)(C::CholeskyPreconditioner{T, S}, b::AbstractVector{T}) where {T, S <: AbstractSparseMatrix{T}} = C.L \ b
+
 end # module
